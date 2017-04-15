@@ -26,5 +26,5 @@ setup(
         'Programming Language :: Python :: 3.6',
     ],
     keywords='sql',
-    packages=['sql_builder'],
+    packages=['sql_builder']
 )
