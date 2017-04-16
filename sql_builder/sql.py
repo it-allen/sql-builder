@@ -165,6 +165,18 @@ class _Table(object):
     def where_view(self):
         raise NotImplemented
 
+    def select(self, *fields):
+        return Select(self, fields=fields)
+
+    def update(self, *pairs):
+        return Update(self, *pairs)
+
+    def insert(self, *pairs):
+        return Insert(self, *pairs)
+
+    def delete(self, where=None):
+        return Delete(self, where)
+
 
 class _SubQueryTable(_Table):
     def __init__(self, alias, query):
@@ -739,6 +751,7 @@ if __name__ == "__main__":
     teach = Table("teach").as_("ss")
     print(Select(tables=student, fields=[student.builtin_all, student.age.max_()]).sql)
     print(Select(tables=student).select(student.builtin_all, student.age.max_("max_age"))[0:4].sql)
+    print(student.select().sql)
 
     print(Select(tables=student.join(class_, student.class_id == class_.id)).sql)
     print(Select(tables=teacher.join(teach,
