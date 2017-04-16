@@ -28,7 +28,7 @@ class _Column(object):
 
 
 class Column(_Column):
-    def __init__(self, name=None, alias=None, table=None):
+    def __init__(self, table, name=None, alias=None):
         self.name = name
         self.alias = alias
         self._table = None
@@ -120,6 +120,9 @@ class Column(_Column):
     def endswith(self, value):
         return Condition(self, Condition.OP_SUFFIX, value)
 
+    def max_(self, alias=None):
+        return Max(self, alias)
+
 
 class Max(_Column):
     def __init__(self, column, alias=None):
@@ -163,6 +166,26 @@ class _Table(object):
         raise NotImplemented
 
 
+class _SubQueryTable(_Table):
+    def __init__(self, alias, query):
+        assert isinstance(query, Select)
+        self._alias = alias
+        self._query = query
+
+    @property
+    def from_view(self):
+        sub_query_sql, sub_query_args = self._query.sql
+        return "({}) AS `{}`".format(sub_query_sql, self._alias), sub_query_args
+
+    @property
+    def field_view(self):
+        return "`{}`".format(self._alias)
+
+    @property
+    def where_view(self):
+        return "`{}`".format(self._alias)
+
+
 class Table(_Table):
     def __init__(self, name, db=None, alias=None):
         self._b_name = name
@@ -175,16 +198,16 @@ class Table(_Table):
         return self
 
     def __getattr__(self, column):
+        return self[column]
+
+    def __getitem__(self, column):
         if column not in self._b_explicit_columns:
             self._b_explicit_columns[column] = Column(name=column, table=self)
         return self._b_explicit_columns[column]
 
-    def __getitem__(self, item):
-        return getattr(self, item)
-
-    # @property
-    # def all(self):
-    #     return Column(table=self)
+    @property
+    def builtin_all(self):
+        return Column(table=self)
 
     @property
     def raw_view(self):
@@ -361,7 +384,7 @@ class Condition(_Where):
     def sql(self):
         sql_pieces = [self.column.where_view, self._op_2_sql(self.op)]
         args = []
-        sub_sql, sub_args = self.value.sql() if isinstance(self.value, Select) else ("", [])
+        sub_sql, sub_args = self.value.sql if isinstance(self.value, Select) else ("", [])
         if self.op in [Condition.OP_IN, Condition.OP_NIN]:
             if isinstance(self.value, Select):
                 sql_pieces.append("({})".format(sub_sql))
@@ -502,6 +525,7 @@ class Insert(_Query):
             self._on_duplicate_update_fields.append(_Query.UpdatePair(key, val))
         return self
 
+    @property
     def sql(self):
         sql_pieces = ["INSERT INTO {table}({fields}) VALUES({placeholders})".format(table=self._tables.raw_view,
                                                                                     fields=", ".join(
@@ -515,6 +539,44 @@ class Insert(_Query):
                 ", ".join("{}=%s".format(pair.field.insert_view) for pair in self._on_duplicate_update_fields)))
             args.extend([pair.value for pair in self._on_duplicate_update_fields])
         return " ".join(sql_pieces), args
+
+
+class InsertFromSelect(_Query):
+    def __init__(self, table, fields, sub_query):
+        assert isinstance(table, Table)
+        super(InsertFromSelect, self).__init__(table)
+        assert fields is None or isinstance(fields, (list, tuple))
+        if fields:
+            for field in fields:
+                assert (isinstance(field, Column))
+        self._fields = fields
+        assert isinstance(sub_query, (Select, _SubQueryTable))
+        self._sub_query = sub_query
+        self._on_duplicate_update_fields = []
+
+    def on_duplicate_key_fields(self, *pairs):
+        if not isinstance(self._sub_query, _SubQueryTable):
+            raise TypeError("The sub-query must be used as a table")
+        assert pairs and len(pairs) % 2 == 0
+        for cursor in range(0, len(pairs), 2):
+            key, val = pairs[cursor:cursor + 2]
+            assert isinstance(key, Column)
+            assert key.table is self._tables
+            assert isinstance(val, Column)
+            assert val.table is self._sub_query
+            self._on_duplicate_update_fields.append(_Query.UpdatePair(key, val))
+        return self
+
+    @property
+    def sql(self):
+        sub_query_sql, sub_query_args = self._sub_query.from_view
+        sql_pieces = ["INSERT INTO {table}({fields}) {sub_query}".format(table=self._tables.raw_view,
+                                                                         fields=", ".join(field.raw_view for field in self._fields),
+                                                                         sub_query=sub_query_sql)]
+        if self._on_duplicate_update_fields:
+            sql_pieces.append("ON DUPLICATE KEY UPDATE {}".format(
+                ", ".join("{}={}".format(pair.field.insert_view, pair.value.where_view) for pair in self._on_duplicate_update_fields)))
+        return " ".join(sql_pieces), sub_query_args
 
 
 class Update(_Query):
@@ -534,6 +596,7 @@ class Update(_Query):
         self._where = cond
         return self
 
+    @property
     def sql(self):
         sql_pieces = ["UPDATE {table} SET {fields}".format(table=self._tables.raw_view,
                                                            fields=", ".join(
@@ -566,6 +629,59 @@ class Select(_Query):
         self._offset = offset
         self._count = count
 
+    def __getitem__(self, item):
+        if not isinstance(item, slice):
+            raise TypeError("select doesn't support")
+        assert item.start >= 0
+        assert item.stop > item.start
+        self._offset = item.start
+        self._count = item.stop - item.start
+        return self
+
+    def select(self, *fields):
+        for field in fields:
+            assert isinstance(field, _Column)
+        self._fields = fields
+        return self
+
+    def where(self, cond):
+        assert isinstance(cond, _Where)
+        self._where = cond
+        return self
+
+    def group(self, *cols):
+        assert len(cols) > 0
+        if len(cols) == 1:
+            if isinstance(cols[0], GroupBy):
+                self._group = cols[0]
+            else:
+                raise TypeError("Instance of `GroupBy` required")
+        else:
+            self._group = GroupBy(*cols)
+        return self
+
+    def asc(self, column):
+        assert isinstance(column, Column)
+        assert column.table is self
+        if not self._sort:
+            self._sort = Sort(column)
+        else:
+            self._sort.asc(column)
+        return self
+
+    def desc(self, column):
+        assert isinstance(column, Column)
+        assert column.table is self
+        if not self._sort:
+            self._sort = Sort(column)
+        else:
+            self._sort.desc(column)
+        return self
+
+    def as_table(self, alias):
+        return _SubQueryTable(alias, self)
+
+    @property
     def sql(self):
         sql_pieces = []
         args = []
@@ -596,6 +712,7 @@ class Delete(_Query):
         self._where = cond
         return self
 
+    @property
     def sql(self):
         sql_pieces = ["DELETE FROM {table}".format(table=self._tables.from_view)]
         args = []
@@ -611,24 +728,34 @@ if __name__ == "__main__":
     """
     class: id, name
     student: id, name, class_id(class:id), age
+    student_snapshot: id, name, class_id, age
     teacher: id, name
     teach: teacher_id(teacher:id), class_id(class:id)
     """
     student = Table("student").as_("s")
+    ss = Table("student_snapshot").as_("snapshot")
     class_ = Table("class").as_("c")
     teacher = Table("teacher")
     teach = Table("teach").as_("ss")
-    print(Select(tables=student, fields=[student.all, Max(student.age, "max_age")]).sql())
-    print(Select(tables=student.join(class_, student.class_id == class_.id)).sql())
+    print(Select(tables=student, fields=[student.builtin_all, student.age.max_()]).sql)
+    print(Select(tables=student).select(student.builtin_all, student.age.max_("max_age"))[0:4].sql)
+
+    print(Select(tables=student.join(class_, student.class_id == class_.id)).sql)
     print(Select(tables=teacher.join(teach,
                                      teach.teacher_id == teacher.id).join(class_, class_.id == teach.class_id),
-                 where=(class_.id == '123123'), fields=[teacher.all]).sql())
+                 where=(class_.id == '123123'), fields=[teacher.builtin_all]).sql)
+    print(Select(tables=teacher.join(teach,
+                                     teach.teacher_id == teacher.id).join(class_, class_.id == teach.class_id)).where(
+        class_.id == '123123').select(teacher.builtin_all).sql)
     print("=" * 20)
     print(Insert(student, student.id, 1, student.name, "学生a", student.class_id, "21321").on_duplicate_key_fields(
-        student.name, "学生a").sql())
+        student.name, "学生a").sql)
 
-    print(Update(student, student.name, "学生").where(student.id == 1).sql())
-    print(Delete(table=student, where=student.id == 1).sql())
-    print(Delete(table=teacher, where=teacher.id.in_(
-        Select(tables=teach.join(teacher, teach.teacher_id == teacher.id), fields=[teacher.id],
-               where=teach.class_id == 2)) & (teacher.deleted == 0)).sql())
+    sub = Select(student).where(student.name == 'test').select(
+        student.id, student.name, student.class_id, student.age).as_table("old_student")
+    print(InsertFromSelect(ss, [ss.id, ss.name, ss.class_id, ss.age], sub).sql)
+
+    print(Update(student, student.name, "学生").where(student.id == 1).sql)
+    print(Delete(table=student).where(student.id == 1).sql)
+    print(Delete(table=teacher).where(teacher.id.in_(
+        Select(tables=teach.join(teacher, teach.teacher_id == teacher.id)).select(teacher.id).where((teach.class_id == 2) & (teacher.deleted == 0)))).sql)
