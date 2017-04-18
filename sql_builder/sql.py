@@ -34,6 +34,9 @@ class Column(_Column):
         self._table = None
         self.table = table
 
+    def __hash__(self):
+        return hash(self.raw_view)
+
     @property
     def table(self):
         if self._table is None:
@@ -130,6 +133,9 @@ class Max(_Column):
         self.column = column
         self.alias = alias
 
+    def __hash__(self):
+        return hash(self.raw_view)
+
     @property
     def sql(self):
         s = "MAX({})".format(self.column.raw)
@@ -205,6 +211,12 @@ class Table(_Table):
         self._b_alias = alias
         self._b_explicit_columns = {}
 
+    def __hash__(self):
+        return hash(self.raw_view)
+
+    def __contains__(self, item):
+        return hash(item) == hash(item)
+
     def as_(self, alias):
         self._b_alias = alias
         return self
@@ -272,6 +284,11 @@ class TableJoin(_Table):
         assert isinstance(base_table, Table)
         self.base = base_table
         self.join_items = []
+
+    def __contains__(self, item):
+        tables = {t.table for t in self.join_items}
+        tables.add(self.base)
+        return item in tables
 
     def join(self, table, condition, method=JOIN):
         assert method in [TableJoin.LEFT_JOIN, TableJoin.INNER_JOIN,
@@ -674,7 +691,7 @@ class Select(_Query):
 
     def asc(self, column):
         assert isinstance(column, Column)
-        assert column.table is self
+        assert column.table in self._tables
         if not self._sort:
             self._sort = Sort(column)
         else:
@@ -683,7 +700,7 @@ class Select(_Query):
 
     def desc(self, column):
         assert isinstance(column, Column)
-        assert column.table is self
+        assert column.table in self._tables
         if not self._sort:
             self._sort = Sort(column)
         else:
@@ -753,7 +770,7 @@ if __name__ == "__main__":
     print(Select(tables=student).select(student.builtin_all, student.age.max_("max_age"))[0:4].sql)
     print(student.select().sql)
 
-    print(Select(tables=student.join(class_, student.class_id == class_.id)).sql)
+    print(Select(tables=student.join(class_, student.class_id == class_.id)).asc(class_.name).sql)
     print(Select(tables=teacher.join(teach,
                                      teach.teacher_id == teacher.id).join(class_, class_.id == teach.class_id),
                  where=(class_.id == '123123'), fields=[teacher.builtin_all]).sql)
