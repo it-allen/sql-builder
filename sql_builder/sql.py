@@ -411,32 +411,41 @@ class Condition(_Where):
 
     @property
     def sql(self):
-        sql_pieces = [self.column.where_view, self._op_2_sql(self.op)]
+        key = self.column.where_view
+        op = self._op_2_sql(self.op)
+        # sql_pieces = [self.column.where_view, self._op_2_sql(self.op)]
         args = []
         sub_sql, sub_args = self.value.sql if isinstance(self.value, Select) else ("", [])
         if self.op in [Condition.OP_IN, Condition.OP_NIN]:
             if isinstance(self.value, Select):
-                sql_pieces.append("({})".format(sub_sql))
+                value = "({})".format(sub_sql)
                 args.extend(sub_args)
             else:
-                sql_pieces.append("({})".format(",".join("%s" for _ in self.value)))
+                value = "({})".format(",".join("%s" for _ in self.value))
                 args.extend(self.value)
         elif self.op in [Condition.OP_LIKE, Condition.OP_NOT_LIKE]:
-            sql_pieces.append("%%{}%%".format(self.value))
+            value = "%%{}%%".format(self.value)
         elif self.op in [Condition.OP_PREFIX, Condition.OP_NOT_PREFIX]:
-            sql_pieces.append("{}%%".format(self.value))
+            value = "{}%%".format(self.value)
         elif self.op in [Condition.OP_SUFFIX, Condition.OP_NOT_SUFFIX]:
-            sql_pieces.append("%%{}".format(self.value))
+            value = "%%{}".format(self.value)
+        elif self.op in [Condition.OP_EQ, Condition.OP_NE]:
+            if self.value is None:
+                op = "IS" if self.op == Condition.OP_EQ else "IS NOT"
+                value = "NULL"
+            else:
+                value = "%s"
+                args.append(self.value)
         else:
             if isinstance(self.value, Column):
-                sql_pieces.append(self.value.where_view)
+                value = self.value.where_view
             elif isinstance(self.value, Select):
-                sql_pieces.append("({})".format(sub_sql))
+                value = "({})".format(sub_sql)
                 args.extend(sub_args)
             else:
-                sql_pieces.append("%s")
+                value = "%s"
                 args.append(self.value)
-        return " ".join(sql_pieces), args
+        return " ".join([key, op, value]), args
 
     def __and__(self, other):
         assert isinstance(other, _Where)
@@ -776,7 +785,7 @@ if __name__ == "__main__":
                  where=(class_.id == '123123'), fields=[teacher.builtin_all]).sql)
     print(Select(tables=teacher.join(teach,
                                      teach.teacher_id == teacher.id).join(class_, class_.id == teach.class_id)).where(
-        class_.id == '123123').select(teacher.builtin_all).sql)
+        class_.id == None).select(teacher.builtin_all).sql)
     print("=" * 20)
     print(Insert(student, student.id, 1, student.name, "学生a", student.class_id, "21321").on_duplicate_key_fields(
         student.name, "学生a").sql)
