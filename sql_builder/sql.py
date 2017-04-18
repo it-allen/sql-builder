@@ -86,6 +86,7 @@ class Column(_Column):
 
     def as_(self, alias):
         self.alias = alias
+        return self
 
     def __gt__(self, other):
         return Condition(self, Condition.OP_GT, other)
@@ -249,8 +250,8 @@ class Table(_Table):
     @property
     def from_view(self):
         if self._b_alias:
-            return "{} AS `{}`".format(self.raw_view, self._b_alias)
-        return self.raw_view
+            return "{} AS `{}`".format(self.raw_view, self._b_alias), []
+        return self.raw_view, []
 
     @property
     def where_view(self):
@@ -312,10 +313,17 @@ class TableJoin(_Table):
 
     @property
     def from_view(self):
-        pieces = [self.base.from_view]
+        args = []
+        base_sql, base_args = self.base.from_view
+        pieces = [base_sql]
+        args.extend(base_args)
         for each in self.join_items:
-            pieces.append("{} {} ON {}".format(each.method, each.table.from_view, each.condition.sql[0]))
-        return " ".join(pieces)
+            tbl_sql, tbl_args = each.table.from_view
+            args.extend(tbl_args)
+            cond_sql, cond_args = each.condition.sql
+            args.extend(cond_args)
+            pieces.append("{} {} ON {}".format(each.method, tbl_sql, cond_sql))
+        return " ".join(pieces), args
 
 
 class _Where(object):
@@ -433,6 +441,11 @@ class Condition(_Where):
             if self.value is None:
                 op = "IS" if self.op == Condition.OP_EQ else "IS NOT"
                 value = "NULL"
+            elif isinstance(self.value, Column):
+                value = self.value.where_view
+            elif isinstance(self.value, Select):
+                value = "({})".format(sub_sql)
+                args.extend(sub_args)
             else:
                 value = "%s"
                 args.append(self.value)
@@ -725,7 +738,9 @@ class Select(_Query):
         args = []
         fields = self._fields and ", ".join(
             field.field_view for field in self._fields) or "*"
-        sql_pieces.append("SELECT {fields} FROM {tables}".format(fields=fields, tables=self._tables.from_view))
+        from_sql, from_args = self._tables.from_view
+        sql_pieces.append("SELECT {fields} FROM {tables}".format(fields=fields, tables=from_sql))
+        args.extend(from_args)
         if self._where:
             where_clause, where_args = self._where.sql
             sql_pieces.append("WHERE {where}".format(where=where_clause))
@@ -752,8 +767,10 @@ class Delete(_Query):
 
     @property
     def sql(self):
-        sql_pieces = ["DELETE FROM {table}".format(table=self._tables.from_view)]
         args = []
+        from_sql, from_args = self._tables.from_view
+        args.extend(from_args)
+        sql_pieces = ["DELETE FROM {table}".format(table=from_sql)]
         if self._where:
             where_clause, where_args = self._where.sql
             sql_pieces.append("WHERE {}".format(where_clause))
