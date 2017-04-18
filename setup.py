@@ -6,7 +6,7 @@ from setuptools import setup
 
 setup(
     name='sql-builder',
-    version='0.0.7',
+    version='0.0.8',
     description='A builder for SQL statement',
     url='https://github.com/it-allen/sql-builder',
     author='Allen Zou',

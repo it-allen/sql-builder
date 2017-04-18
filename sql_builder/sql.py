@@ -263,8 +263,8 @@ class Table(_Table):
     def inner_join(self, other, condition):
         return TableJoin(self).inner_join(other, condition)
 
-    def outer_join(self, other, condition):
-        return TableJoin(self).outer_join(other, condition)
+    def full_join(self, other, condition):
+        return TableJoin(self).full_join(other, condition)
 
     def join(self, other, condition):
         return TableJoin(self).join(other, condition)
@@ -274,7 +274,7 @@ class TableJoin(_Table):
     LEFT_JOIN = "LEFT JOIN"
     INNER_JOIN = "INNER JOIN"
     RIGHT_JOIN = "RIGHT JOIN"
-    OUTER_JOIN = "OUTER JOIN"
+    FULL_JOIN = "FULL JOIN"
     JOIN = INNER_JOIN
     JoinTuple = collections.namedtuple("JoinTuple", ["method", "table", "condition"])
 
@@ -290,7 +290,7 @@ class TableJoin(_Table):
 
     def join(self, table, condition, method=JOIN):
         assert method in [TableJoin.LEFT_JOIN, TableJoin.INNER_JOIN,
-                          TableJoin.RIGHT_JOIN, TableJoin.OUTER_JOIN]
+                          TableJoin.RIGHT_JOIN, TableJoin.FULL_JOIN]
         assert isinstance(condition, (ConditionUnion, Condition))
         assert isinstance(table, Table)
         self.join_items.append(TableJoin.JoinTuple(method, table, condition))
@@ -305,8 +305,8 @@ class TableJoin(_Table):
     def inner_join(self, table, condition):
         return self.join(table, condition, TableJoin.INNER_JOIN)
 
-    def outer_join(self, table, condition):
-        return self.join(table, condition, TableJoin.OUTER_JOIN)
+    def full_join(self, table, condition):
+        return self.join(table, condition, TableJoin.FULL_JOIN)
 
     def from_view(self, placeholder="%s"):
         args = []
