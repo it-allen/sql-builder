@@ -1,10 +1,10 @@
-# sql()-builder
-A tool to build sql() statement, avoiding to write SQLs directly. 
+# sql-builder
+A tool to build sql statement, avoiding to write SQLs directly. 
 
 
 ## Install
 ```sh
-pip install sql()-builder
+pip install sql-builder
 ```
 
 ## Examples
@@ -16,7 +16,7 @@ pip install sql()-builder
 #    student_snapshot: id, name, class_id, age
 #    teacher: id, name
 #    teach: teacher_id(teacher:id), class_id(class:id)
-import sql()_builder
+import sql_builder
 
 
 student = Table("student").as_("s")
