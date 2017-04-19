@@ -1,10 +1,10 @@
-# sql()-builder
-A tool to build sql() statement, avoiding to write SQLs directly. 
+# sql-builder
+A tool to build sql statement, avoiding to write SQLs directly. 
 
 
 ## Install
 ```sh
-pip install sql()-builder
+pip install sql-builder
 ```
 
 ## Examples
