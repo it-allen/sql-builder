@@ -714,7 +714,7 @@ class Select(_Query):
         assert isinstance(column, Column)
         assert column.table in self._tables
         if not self._sort:
-            self._sort = Sort(column)
+            self._sort = Sort(column, Sort.DESC)
         else:
             self._sort.desc(column)
         return self
