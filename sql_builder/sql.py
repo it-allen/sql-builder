@@ -174,11 +174,11 @@ class _Table(object):
     def select(self, *fields):
         return Select(self, fields=fields)
 
-    def update(self, *pairs):
-        return Update(self, *pairs)
+    def update(self, *pairs, **pairs_kwargs):
+        return Update(self, *pairs, **pairs_kwargs)
 
-    def insert(self, *pairs):
-        return Insert(self, *pairs)
+    def insert(self, *pairs, **pairs_kwargs):
+        return Insert(self, *pairs, **pairs_kwargs)
 
     def delete(self, where=None):
         return Delete(self, where)
@@ -549,30 +549,45 @@ class _Query(object):
 
 
 class Insert(_Query):
-    def __init__(self, table, *pairs):
+    def __init__(self, table, *pairs, **pairs_kwargs):
         assert isinstance(table, Table)
         super(Insert, self).__init__(tables=table)
-        assert pairs and len(pairs) % 2 == 0
+        assert len(pairs) % 2 == 0
         self._pairs = []
         for cursor in range(0, len(pairs), 2):
             key, val = pairs[cursor:cursor + 2]
             assert isinstance(key, Column)
             assert key.table is None or key.table is table
             self._pairs.append(_Query.UpdatePair(key, val))
+        for key, val in pairs_kwargs.items():
+            self._pairs.append(_Query.UpdatePair(getattr(table, key), val))
         self._on_duplicate_update_fields = []
 
-    def on_duplicate_key_fields(self, *pairs):
-        assert pairs and len(pairs) % 2 == 0
+    def add_fields(self, *pairs, **pairs_kwargs):
+        assert len(pairs) % 2 == 0
+        for cursor in range(0, len(pairs), 2):
+            key, val = pairs[cursor:cursor + 2]
+            assert isinstance(key, Column)
+            assert key.table is None or key.table is self._tables
+            self._pairs.append(_Query.UpdatePair(key, val))
+        for key, val in pairs_kwargs.items():
+            self._pairs.append(_Query.UpdatePair(getattr(self._tables, key), val))
+        return self
+
+    def on_duplicate_key_fields(self, *pairs, **pairs_kwargs):
+        assert len(pairs) % 2 == 0
         for cursor in range(0, len(pairs), 2):
             key, val = pairs[cursor:cursor + 2]
             assert isinstance(key, Column)
             self._on_duplicate_update_fields.append(_Query.UpdatePair(key, val))
+        for key, val in pairs_kwargs.items():
+            self._on_duplicate_update_fields.append(_Query.UpdatePair(getattr(self._tables, key), val))
         return self
 
     def sql(self, placeholder="%s"):
         sql_pieces = ["INSERT INTO {table}({fields}) VALUES({placeholders})".format(table=self._tables.raw_view,
                                                                                     fields=", ".join(
-                                                                                        pair.field.name for pair
+                                                                                        pair.field.insert_view for pair
                                                                                         in self._pairs),
                                                                                     placeholders=", ".join(
                                                                                         [placeholder] * len(self._pairs)))]
@@ -622,20 +637,33 @@ class InsertFromSelect(_Query):
 
 
 class Update(_Query):
-    def __init__(self, table, *pairs):
+    def __init__(self, table, *pairs, **pairs_kwargs):
         assert isinstance(table, Table)
         super(Update, self).__init__(tables=table)
-        assert pairs and len(pairs) % 2 == 0
+        assert len(pairs) % 2 == 0
         self._pairs = []
         for cursor in range(0, len(pairs), 2):
             key, val = pairs[cursor:cursor + 2]
             assert isinstance(key, Column)
             assert key.table is None or key.table is table
             self._pairs.append(_Query.UpdatePair(key, val))
+        for key, val in pairs_kwargs.items():
+            self._pairs.append(_Query.UpdatePair(getattr(table, key), val))
 
     def where(self, cond):
         assert cond is None or isinstance(cond, _Where)
         self._where = cond
+        return self
+
+    def add_fields(self, *pairs, **pairs_kwargs):
+        assert len(pairs) % 2 == 0
+        for cursor in range(0, len(pairs), 2):
+            key, val = pairs[cursor:cursor + 2]
+            assert isinstance(key, Column)
+            assert key.table is None or key.table is self._tables
+            self._pairs.append(_Query.UpdatePair(key, val))
+        for key, val in pairs_kwargs.items():
+            self._pairs.append(_Query.UpdatePair(getattr(self._tables, key), val))
         return self
 
     def sql(self, placeholder="%s"):
@@ -794,12 +822,15 @@ if __name__ == "__main__":
     print("=" * 20)
     print(Insert(student, student.id, 1, student.name, "学生a", student.class_id, "21321").on_duplicate_key_fields(
         student.name, "学生a").sql())
+    print(student.insert(id=1, name="学生a", class_id="21321").on_duplicate_key_fields(name="学生a").add_fields(age=20).sql())
 
     sub = Select(student).where(student.name == 'test').select(
         student.id, student.name, student.class_id, student.age).as_table("old_student")
     print(InsertFromSelect(ss, [ss.id, ss.name, ss.class_id, ss.age], sub).sql())
 
-    print(Update(student, student.name, "学生").where(student.id == 1).sql())
+    print(student.update(student.name, "学生").where(student.id == 1).sql())
+    print(student.update(name="学生").add_fields(age=20).where(student.id == 1).sql())
     print(Delete(table=student).where(student.id == 1).sql())
     print(Delete(table=teacher).where(teacher.id.in_(
         Select(tables=teach.join(teacher, teach.teacher_id == teacher.id)).select(teacher.id).where((teach.class_id == 2) & (teacher.deleted == 0)))).sql())
+
