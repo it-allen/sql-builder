@@ -127,6 +127,12 @@ class Column(_Column):
     def max_(self, alias=None):
         return Max(self, alias)
 
+    def min_(self, alias=None):
+        return Min(self, alias)
+
+    def count(self, alias=None):
+        return Count(self, alias)
+
 
 class Max(_Column):
     def __init__(self, column, alias=None):
@@ -147,6 +153,46 @@ class Max(_Column):
     @property
     def raw_view(self):
         return "MAX({})".format(self.column.raw_view)
+
+    @property
+    def field_view(self):
+        if self.alias:
+            return "{} AS `{}`".format(self.raw_view, self.alias)
+        return self.raw_view
+
+
+class Min(_Column):
+    def __init__(self, column, alias=None):
+        assert isinstance(column, Column)
+        self.column = column
+        self.alias = alias
+
+    def __hash__(self):
+        return hash(self.raw_view)
+
+    @property
+    def raw_view(self):
+        return "MIN({})".format(self.column.raw_view)
+
+    @property
+    def field_view(self):
+        if self.alias:
+            return "{} AS `{}`".format(self.raw_view, self.alias)
+        return self.raw_view
+
+
+class Count(_Column):
+    def __init__(self, column, alias=None):
+        assert isinstance(column, Column)
+        self.column = column
+        self.alias = alias
+
+    def __hash__(self):
+        return hash(self.raw_view)
+
+    @property
+    def raw_view(self):
+        return "COUNT({})".format(self.column.raw_view)
 
     @property
     def field_view(self):
@@ -808,8 +854,10 @@ if __name__ == "__main__":
     class_ = Table("class").as_("c")
     teacher = Table("teacher")
     teach = Table("teach").as_("ss")
-    print(Select(tables=student, fields=[student.builtin_all, student.age.max_()]).sql())
-    print(Select(tables=student).select(student.builtin_all, student.age.max_("max_age"))[0:4].sql())
+    print(Select(tables=student, fields=[student.builtin_all, student.age.max_()])[0:4].sql())
+    print(student.select(student.builtin_all, student.age.max_("max_age")).sql())
+    print(student.select(student.builtin_all, student.age.min_("min_age")).sql())
+    print(student.select(student.id.count("student_count")).sql())
     print(student.select().sql())
 
     print(Select(tables=student.join(class_, (student.class_id == class_.id) & (student.age == 20))).asc(class_.name).sql("?"))
