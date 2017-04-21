@@ -766,11 +766,8 @@ class Select(_Query):
 
     def group(self, *cols):
         assert len(cols) > 0
-        if len(cols) == 1:
-            if isinstance(cols[0], GroupBy):
-                self._group = cols[0]
-            else:
-                raise TypeError("Instance of `GroupBy` required")
+        if len(cols) == 1 and isinstance(cols[0], GroupBy):
+            self._group = cols[0]
         else:
             self._group = GroupBy(*cols)
         return self
@@ -854,7 +851,7 @@ if __name__ == "__main__":
     class_ = Table("class").as_("c")
     teacher = Table("teacher")
     teach = Table("teach").as_("ss")
-    print(student.select(student.builtin_all)[4:10].sql())
+    print(student.select(student.builtin_all).group(student.id, student.age)[4:10].sql())
     print(student.select(student.builtin_all, student.age.max_("max_age")).sql())
     print(student.select(student.builtin_all, student.age.min_("min_age")).sql())
     print(student.select(student.id.count("student_count")).sql())
