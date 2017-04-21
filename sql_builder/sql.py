@@ -675,9 +675,14 @@ class InsertFromSelect(_Query):
         return self
 
     def sql(self, placeholder="%s"):
-        sub_query_sql, sub_query_args = self._sub_query.from_view(placeholder)
+        if isinstance(self._sub_query, Select):
+            sub_query_sql, sub_query_args = self._sub_query.sql(placeholder)
+        elif isinstance(self._sub_query, _SubQueryTable):
+            sub_query_sql, sub_query_args = self._sub_query.from_view(placeholder)
+        else:
+            raise ValueError("Unknown")
         sql_pieces = ["INSERT INTO {table}({fields}) {sub_query}".format(table=self._tables.raw_view,
-                                                                         fields=", ".join(field.raw_view for field in self._fields),
+                                                                         fields=", ".join(field.insert_view for field in self._fields),
                                                                          sub_query=sub_query_sql)]
         if self._on_duplicate_update_fields:
             sql_pieces.append("ON DUPLICATE KEY UPDATE {}".format(
