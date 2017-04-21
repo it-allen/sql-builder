@@ -48,7 +48,7 @@ class Column(_Column):
         if t is None:
             self._table = None
         else:
-            assert isinstance(t, Table)
+            assert isinstance(t, _Table)
             self._table = weakref.ref(t)
 
     @property
@@ -202,6 +202,16 @@ class Count(_Column):
 
 
 class _Table(object):
+    def __getattr__(self, column):
+        return self[column]
+
+    def __getitem__(self, column):
+        return Column(name=column, table=self)
+
+    @property
+    def builtin_all(self):
+        return Column(table=self)
+
     @property
     def raw_view(self):
         raise NotImplemented
@@ -254,7 +264,6 @@ class Table(_Table):
         self._b_name = name
         self._b_db = db
         self._b_alias = alias
-        self._b_explicit_columns = {}
 
     def __hash__(self):
         return hash(self.raw_view)
@@ -266,17 +275,8 @@ class Table(_Table):
         self._b_alias = alias
         return self
 
-    def __getattr__(self, column):
-        return self[column]
-
-    def __getitem__(self, column):
-        if column not in self._b_explicit_columns:
-            self._b_explicit_columns[column] = Column(name=column, table=self)
-        return self._b_explicit_columns[column]
-
-    @property
-    def builtin_all(self):
-        return Column(table=self)
+    def copy(self):
+        return Table(name=self._b_name, db=self._b_db, alias=self._b_alias)
 
     @property
     def raw_view(self):
@@ -325,7 +325,7 @@ class TableJoin(_Table):
     JoinTuple = collections.namedtuple("JoinTuple", ["method", "table", "condition"])
 
     def __init__(self, base_table):
-        assert isinstance(base_table, Table)
+        assert isinstance(base_table, _Table)
         self.base = base_table
         self.join_items = []
 
@@ -338,7 +338,7 @@ class TableJoin(_Table):
         assert method in [TableJoin.LEFT_JOIN, TableJoin.INNER_JOIN,
                           TableJoin.RIGHT_JOIN, TableJoin.FULL_JOIN]
         assert isinstance(condition, (ConditionUnion, Condition))
-        assert isinstance(table, Table)
+        assert isinstance(table, _Table)
         self.join_items.append(TableJoin.JoinTuple(method, table, condition))
         return self
 
@@ -849,12 +849,12 @@ if __name__ == "__main__":
     teacher: id, name
     teach: teacher_id(teacher:id), class_id(class:id)
     """
-    student = Table("student").as_("s")
+    student = Table("student")
     ss = Table("student_snapshot").as_("snapshot")
     class_ = Table("class").as_("c")
     teacher = Table("teacher")
     teach = Table("teach").as_("ss")
-    print(Select(tables=student, fields=[student.builtin_all, student.age.max_()])[0:4].sql())
+    print(student.select(student.builtin_all)[4:10].sql())
     print(student.select(student.builtin_all, student.age.max_("max_age")).sql())
     print(student.select(student.builtin_all, student.age.min_("min_age")).sql())
     print(student.select(student.id.count("student_count")).sql())
@@ -881,4 +881,7 @@ if __name__ == "__main__":
     print(Delete(table=student).where(student.id == 1).sql())
     print(Delete(table=teacher).where(teacher.id.in_(
         Select(tables=teach.join(teacher, teach.teacher_id == teacher.id)).select(teacher.id).where((teach.class_id == 2) & (teacher.deleted == 0)))).sql())
+
+    sub_query = student.select(student.age.max_("oldest")).where(student.age <= 20).as_table("sub")
+    print(student.inner_join(sub_query, sub_query.oldest == student.age).select().sql())
 
