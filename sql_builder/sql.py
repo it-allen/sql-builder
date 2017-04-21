@@ -285,6 +285,9 @@ class Table(_Table):
             s = "`{}`.{}".format(self._b_db, s)
         return s
 
+    def insert_from_select(self, fields, select):
+        return InsertFromSelect(self, fields, select)
+
     @property
     def field_view(self):
         if self._b_alias:
@@ -871,7 +874,7 @@ if __name__ == "__main__":
 
     sub = Select(student).where(student.name == 'test').select(
         student.id, student.name, student.class_id, student.age).as_table("old_student")
-    print(InsertFromSelect(ss, [ss.id, ss.name, ss.class_id, ss.age], sub).sql())
+    print(ss.insert_from_select([ss.id, ss.name, ss.class_id, ss.age], sub).sql())
 
     print(student.update(student.name, "学生").where(student.id == 1).sql())
     print(student.update(name="学生").add_fields(age=20).where(student.id == 1).sql())
