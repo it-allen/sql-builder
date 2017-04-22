@@ -318,6 +318,9 @@ class Table(_Table):
     def join(self, other, condition):
         return TableJoin(self).join(other, condition)
 
+    def select(self, *fields):
+        return super(Table, self).select(*[getattr(self, field) if isinstance(field, str) else field for field in fields])
+
 
 class TableJoin(_Table):
     LEFT_JOIN = "LEFT JOIN"
@@ -863,7 +866,7 @@ if __name__ == "__main__":
     print(student.select(student.builtin_all, student.age.max_("max_age")).sql())
     print(student.select(student.builtin_all, student.age.min_("min_age")).sql())
     print(student.select(student.id.count("student_count")).sql())
-    print(student.select().sql())
+    print(student.select("id", "age").sql())
 
     print(Select(tables=student.join(class_, (student.class_id == class_.id) & (student.age == 20))).asc(class_.name).sql("?"))
     print(Select(tables=teacher.join(teach,
