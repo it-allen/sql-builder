@@ -387,6 +387,24 @@ class _Where(object):
     def sql(self, placeholder="%s"):
         return
 
+    def is_empty(self):
+        return False
+
+
+class EmptyCond(_Where):
+    def is_empty(self):
+        return True
+
+    def __and__(self, other):
+        return other
+
+    def __or__(self, other):
+        return other
+
+    def __invert__(self):
+        return self
+
+
 
 class Condition(_Where):
     OP_EQ = "="
@@ -508,10 +526,14 @@ class Condition(_Where):
 
     def __and__(self, other):
         assert isinstance(other, _Where)
+        if isinstance(other, EmptyCond):
+            return self
         return ConditionUnion(self, other, ConditionUnion.OP_AND)
 
     def __or__(self, other):
         assert isinstance(other, _Where)
+        if isinstance(other, EmptyCond):
+            return self
         return ConditionUnion(self, other, ConditionUnion.OP_OR)
 
 
@@ -520,8 +542,8 @@ class ConditionUnion(_Where):
     OP_OR = "$or"
 
     def __init__(self, left_conf, right_cond, op):
-        assert isinstance(left_conf, _Where)
-        assert isinstance(right_cond, _Where)
+        assert isinstance(left_conf, _Where) and not isinstance(left_conf, EmptyCond)
+        assert isinstance(right_cond, _Where) and not isinstance(right_cond, EmptyCond)
         self.left = left_conf
         self.right = right_cond
         self.op = op
@@ -729,7 +751,7 @@ class Update(_Query):
                                                                "{}={}".format(pair.field.update_view, placeholder) for pair in
                                                                self._pairs))]
         args = [pair.value for pair in self._pairs]
-        if self._where:
+        if self._where and not self._where.is_empty():
             where_clause, where_args = self._where.sql(placeholder)
             sql_pieces.append("WHERE {}".format(where_clause))
             args.extend(where_args)
@@ -812,7 +834,7 @@ class Select(_Query):
         from_sql, from_args = self._tables.from_view(placeholder)
         sql_pieces.append("SELECT {fields} FROM {tables}".format(fields=fields, tables=from_sql))
         args.extend(from_args)
-        if self._where:
+        if self._where and not self._where.is_empty():
             where_clause, where_args = self._where.sql(placeholder)
             sql_pieces.append("WHERE {where}".format(where=where_clause))
             args.extend(where_args)
@@ -841,7 +863,7 @@ class Delete(_Query):
         from_sql, from_args = self._tables.from_view(placeholder)
         args.extend(from_args)
         sql_pieces = ["DELETE FROM {table}".format(table=from_sql)]
-        if self._where:
+        if self._where and not self._where.is_empty():
             where_clause, where_args = self._where.sql(placeholder)
             sql_pieces.append("WHERE {}".format(where_clause))
             args.extend(where_args)
@@ -892,4 +914,11 @@ if __name__ == "__main__":
 
     sub_query = student.select(student.age.max_("oldest")).where(student.age <= 20).as_table("sub")
     print(student.inner_join(sub_query, sub_query.oldest == student.age).select().sql())
+
+    cond = EmptyCond()
+    cond |= (student.name == '12321') | (student.name == '23123')
+    cond &= student.age >= 20
+    query = student.select().where(cond)
+    print(query.sql())
+
 
