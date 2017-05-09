@@ -3,28 +3,32 @@
 # 2017/4/6 下午2:38
 import collections
 import weakref
+import sys
+
+if sys.version_info >= (3, 0):
+    basestring = str
 
 
 class _Column(object):
     @property
     def field_view(self):
-        raise NotImplemented
+        raise NotImplemented()
 
     @property
     def where_view(self):
-        raise NotImplemented
+        raise NotImplemented()
 
     @property
     def insert_view(self):
-        raise NotImplemented
+        raise NotImplemented()
 
     @property
     def update_view(self):
-        raise NotImplemented
+        raise NotImplemented()
 
     @property
     def raw_view(self):
-        raise NotImplemented
+        raise NotImplemented()
 
 
 class Column(_Column):
@@ -151,6 +155,44 @@ class Column(_Column):
     def count(self, alias=None):
         return Count(self, alias)
 
+    def update(self, value):
+        return ColumnUpdating(self, value)
+
+    def inc(self, step=1):
+        return ColumnUpdating(self, step, ColumnUpdating.OP_INC)
+
+    def dec(self, step=1):
+        return ColumnUpdating(self, step, ColumnUpdating.OP_DEC)
+
+
+class ColumnUpdating(object):
+    OP_ASSIGN = "="
+    OP_INC = "$inc"
+    OP_DEC = "$dec"
+    ops = [
+        OP_ASSIGN,
+        OP_INC,
+        OP_DEC
+    ]
+    def __init__(self, column, value, op=OP_ASSIGN):
+        assert isinstance(column, Column)
+        assert op in self.ops
+        self.column = column
+        self.op = op
+        self.value = value
+
+    def sql(self, placeholder="%s"):
+        if self.op == self.OP_ASSIGN:
+            tpl = "{col} = {placeholder}"
+        elif self.op == self.OP_INC:
+            tpl = "{col} = {col} + {placeholder}"
+        else:
+            tpl = "{col} = {col} - {placeholder}"
+        col = "`{}`".format(self.column.name)
+        if isinstance(self.value, Column):
+            return tpl.format(col=col, placeholder=self.value.raw_view), []
+        return tpl.format(col=col, placeholder=placeholder), [self.value]
+
 
 class Max(_Column):
     def __init__(self, column, alias=None):
@@ -163,7 +205,7 @@ class Max(_Column):
 
     @property
     def sql(self):
-        s = "MAX({})".format(self.column.raw)
+        s = "MAX({})".format(self.column.raw_view)
         if self.alias:
             s = "{} AS `{}`".format(s, self.alias)
         return s
@@ -232,18 +274,18 @@ class _Table(object):
 
     @property
     def raw_view(self):
-        raise NotImplemented
+        raise NotImplemented()
 
     @property
     def field_view(self):
-        raise NotImplemented
+        raise NotImplemented()
 
     def from_view(self, placeholder="%s"):
-        raise NotImplemented
+        raise NotImplemented()
 
     @property
     def where_view(self):
-        raise NotImplemented
+        raise NotImplemented()
 
     def select(self, *fields):
         return Select(self, fields=fields)
@@ -671,9 +713,15 @@ class Insert(_Query):
         for cursor in range(0, len(pairs), 2):
             key, val = pairs[cursor:cursor + 2]
             assert isinstance(key, Column)
-            self._on_duplicate_update_fields.append(_Query.UpdatePair(key, val))
+            self._on_duplicate_update_fields.append(ColumnUpdating(key, val))
         for key, val in pairs_kwargs.items():
-            self._on_duplicate_update_fields.append(_Query.UpdatePair(getattr(self._tables, key), val))
+            self._on_duplicate_update_fields.append(ColumnUpdating(getattr(self._tables, key), val))
+        return self
+
+    def on_duplicate_key_update(self, *updating):
+        for each in updating:
+            assert isinstance(each, ColumnUpdating)
+            self._on_duplicate_update_fields.append(each)
         return self
 
     def sql(self, placeholder="%s"):
@@ -685,9 +733,19 @@ class Insert(_Query):
                                                                                         [placeholder] * len(self._pairs)))]
         args = [pair.value for pair in self._pairs]
         if self._on_duplicate_update_fields:
+            ts = []
+            update_args = []
+            for each in self._on_duplicate_update_fields:
+                s, a = each.sql(placeholder)
+                ts.append(s)
+                update_args.extend(a)
             sql_pieces.append("ON DUPLICATE KEY UPDATE {}".format(
-                ", ".join("{}={}".format(pair.field.insert_view, placeholder) for pair in self._on_duplicate_update_fields)))
-            args.extend([pair.value for pair in self._on_duplicate_update_fields])
+                ", ".join(ts)
+            ))
+            args.extend(update_args)
+            # sql_pieces.append("ON DUPLICATE KEY UPDATE {}".format(
+            #     ", ".join("{}={}".format(pair.field.insert_view, placeholder) for pair in self._on_duplicate_update_fields)))
+            # args.extend([pair.value for pair in self._on_duplicate_update_fields])
         return " ".join(sql_pieces), args
 
 
@@ -714,7 +772,13 @@ class InsertFromSelect(_Query):
             assert key.table is self._tables
             assert isinstance(val, Column)
             assert val.table is self._sub_query
-            self._on_duplicate_update_fields.append(_Query.UpdatePair(key, val))
+            self._on_duplicate_update_fields.append(ColumnUpdating(key, val))
+        return self
+
+    def on_duplicate_key_update(self, *updating):
+        for each in updating:
+            assert isinstance(each, ColumnUpdating)
+            self._on_duplicate_update_fields.append(each)
         return self
 
     def sql(self, placeholder="%s"):
@@ -728,8 +792,18 @@ class InsertFromSelect(_Query):
                                                                          fields=", ".join(field.insert_view for field in self._fields),
                                                                          sub_query=sub_query_sql)]
         if self._on_duplicate_update_fields:
+            # sql_pieces.append("ON DUPLICATE KEY UPDATE {}".format(
+            #     ", ".join("{}={}".format(pair.field.insert_view, pair.value.where_view) for pair in self._on_duplicate_update_fields)))
+            ts = []
+            update_args = []
+            for each in self._on_duplicate_update_fields:
+                s, a = each.sql(placeholder)
+                ts.append(s)
+                update_args.extend(a)
             sql_pieces.append("ON DUPLICATE KEY UPDATE {}".format(
-                ", ".join("{}={}".format(pair.field.insert_view, pair.value.where_view) for pair in self._on_duplicate_update_fields)))
+                ", ".join(ts)
+            ))
+            sub_query_args.extend(update_args)
         return " ".join(sql_pieces), sub_query_args
 
 
@@ -738,14 +812,15 @@ class Update(_Query):
         assert isinstance(table, Table)
         super(Update, self).__init__(tables=table)
         assert len(pairs) % 2 == 0
+        self._where = None
         self._pairs = []
         for cursor in range(0, len(pairs), 2):
             key, val = pairs[cursor:cursor + 2]
             assert isinstance(key, Column)
             assert key.table is None or key.table is table
-            self._pairs.append(_Query.UpdatePair(key, val))
+            self._pairs.append(ColumnUpdating(key, val))
         for key, val in pairs_kwargs.items():
-            self._pairs.append(_Query.UpdatePair(getattr(table, key), val))
+            self._pairs.append(ColumnUpdating(getattr(table, key), val))
 
     def where(self, cond):
         assert cond is None or isinstance(cond, _Where)
@@ -758,17 +833,26 @@ class Update(_Query):
             key, val = pairs[cursor:cursor + 2]
             assert isinstance(key, Column)
             assert key.table is None or key.table is self._tables
-            self._pairs.append(_Query.UpdatePair(key, val))
+            self._pairs.append(ColumnUpdating(key, val))
         for key, val in pairs_kwargs.items():
-            self._pairs.append(_Query.UpdatePair(getattr(self._tables, key), val))
+            self._pairs.append(ColumnUpdating(getattr(self._tables, key), val))
+        return self
+
+    def update(self, *updating):
+        for each in updating:
+            assert isinstance(each, ColumnUpdating)
+            self._pairs.append(each)
         return self
 
     def sql(self, placeholder="%s"):
-        sql_pieces = ["UPDATE {table} SET {fields}".format(table=self._tables.raw_view,
-                                                           fields=", ".join(
-                                                               "{}={}".format(pair.field.update_view, placeholder) for pair in
-                                                               self._pairs))]
-        args = [pair.value for pair in self._pairs]
+        args = []
+        update_pieces = []
+        for each in self._pairs:
+            s, a = each.sql(placeholder)
+            update_pieces.append(s)
+            args.extend(a)
+        sql_pieces = ["UPDATE {} SET {}".format(self._tables.raw_view,
+                                                ", ".join(update_pieces))]
         if self._where and not self._where.is_empty():
             where_clause, where_args = self._where.sql(placeholder)
             sql_pieces.append("WHERE {}".format(where_clause))
@@ -891,7 +975,7 @@ class Delete(_Query):
 if __name__ == "__main__":
     # test here>>>
     """
-    class: id, name
+    class: id, name, access_num
     student: id, name, class_id(class:id), age
     student_snapshot: id, name, class_id, age
     teacher: id, name
@@ -938,5 +1022,7 @@ if __name__ == "__main__":
     cond &= student.age >= 20
     query = student.select().where(cond)
     print(query.sql())
+
+    print(class_.update().update(class_.access_num.inc()).sql())
 
 
