@@ -337,7 +337,7 @@ class Table(_Table):
         return TableJoin(self).join(other, condition)
 
     def select(self, *fields):
-        return super(Table, self).select(*[getattr(self, field) if isinstance(field, str) else field for field in fields])
+        return super(Table, self).select(*[getattr(self, field) if isinstance(field, basestring) else field for field in fields])
 
 
 class TableJoin(_Table):
@@ -448,7 +448,7 @@ class Condition(_Where):
             assert isinstance(value, (list, tuple)) and len(value) > 0 or isinstance(value, Select)
         if op in (Condition.OP_LIKE, Condition.OP_NOT_LIKE, Condition.OP_PREFIX,
                   Condition.OP_SUFFIX):
-            assert isinstance(value, str)
+            assert isinstance(value, basestring)
             assert len(value) > 0
         self.value = value
 
