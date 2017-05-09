@@ -91,20 +91,38 @@ class Column(_Column):
     def __gt__(self, other):
         return Condition(self, Condition.OP_GT, other)
 
+    def gt(self, other):
+        return self > other
+
     def __ge__(self, other):
         return Condition(self, Condition.OP_GE, other)
+
+    def ge(self, other):
+        return self >= other
 
     def __lt__(self, other):
         return Condition(self, Condition.OP_LT, other)
 
+    def lt(self, other):
+        return self < other
+
     def __le__(self, other):
         return Condition(self, Condition.OP_LE, other)
+
+    def le(self, other):
+        return self <= other
 
     def __eq__(self, other):
         return Condition(self, Condition.OP_EQ, other)
 
+    def eq(self, other):
+        return self == other
+
     def __ne__(self, other):
         return Condition(self, Condition.OP_NE, other)
+
+    def ne(self, other):
+        return self != other
 
     def in_(self, value):
         return Condition(self, Condition.OP_IN, value)
@@ -496,11 +514,11 @@ class Condition(_Where):
                 value = "({})".format(",".join(placeholder for _ in self.value))
                 args.extend(self.value)
         elif self.op in [Condition.OP_LIKE, Condition.OP_NOT_LIKE]:
-            value = "%%{}%%".format(self.value)
+            value = "'%%{}%%'".format(self.value)
         elif self.op in [Condition.OP_PREFIX, Condition.OP_NOT_PREFIX]:
-            value = "{}%%".format(self.value)
+            value = "'{}%%'".format(self.value)
         elif self.op in [Condition.OP_SUFFIX, Condition.OP_NOT_SUFFIX]:
-            value = "%%{}".format(self.value)
+            value = "'%%{}'".format(self.value)
         elif self.op in [Condition.OP_EQ, Condition.OP_NE]:
             if self.value is None:
                 op = "IS" if self.op == Condition.OP_EQ else "IS NOT"
