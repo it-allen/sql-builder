@@ -940,10 +940,10 @@ class Select(_Query):
             where_clause, where_args = self._where.sql(placeholder)
             sql_pieces.append("WHERE {where}".format(where=where_clause))
             args.extend(where_args)
-        if self._sort:
-            sql_pieces.append("ORDER BY {}".format(self._sort.sql))
         if self._group:
             sql_pieces.append("GROUP BY {}".format(self._group.sql))
+        if self._sort:
+            sql_pieces.append("ORDER BY {}".format(self._sort.sql))
         if self._count > 0:
             sql_pieces.append("LIMIT {:d}, {:d}".format(self._offset, self._count))
         return " ".join(sql_pieces), args
