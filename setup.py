@@ -7,7 +7,7 @@ from sql_builder import __version__
 
 setup(
     name='sql-builder',
-    version=__version__,
+    version=".".join(str(x) for x in __version__),
     description='A builder for SQL statement',
     url='https://github.com/it-allen/sql-builder',
     author='Allen Zou',
