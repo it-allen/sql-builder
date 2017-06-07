@@ -2,8 +2,8 @@
 # Author: Allen Zou
 # 2017/4/6 下午2:38
 import collections
-import weakref
 import sys
+import weakref
 
 if sys.version_info >= (3, 0):
     basestring = str
@@ -12,23 +12,32 @@ if sys.version_info >= (3, 0):
 class _Column(object):
     @property
     def field_view(self):
-        raise NotImplemented()
+        raise NotImplemented
 
     @property
     def where_view(self):
-        raise NotImplemented()
+        raise NotImplemented
 
     @property
     def insert_view(self):
-        raise NotImplemented()
+        raise NotImplemented
 
     @property
     def update_view(self):
-        raise NotImplemented()
+        raise NotImplemented
 
     @property
     def raw_view(self):
-        raise NotImplemented()
+        raise NotImplemented
+
+
+class RawSQLField(_Column):
+    def __init__(self, piece):
+        self.piece = piece
+
+    @property
+    def field_view(self):
+        return self.piece
 
 
 class Column(_Column):
@@ -174,6 +183,7 @@ class ColumnUpdating(object):
         OP_INC,
         OP_DEC
     ]
+
     def __init__(self, column, value, op=OP_ASSIGN):
         assert isinstance(column, Column)
         assert op in self.ops
@@ -379,7 +389,8 @@ class Table(_Table):
         return TableJoin(self).join(other, condition)
 
     def select(self, *fields):
-        return super(Table, self).select(*[getattr(self, field) if isinstance(field, basestring) else field for field in fields])
+        return super(Table, self).select(
+            *[getattr(self, field) if isinstance(field, basestring) else field for field in fields])
 
 
 class TableJoin(_Table):
@@ -463,7 +474,6 @@ class EmptyCond(_Where):
 
     def __invert__(self):
         return self
-
 
 
 class Condition(_Where):
@@ -730,7 +740,8 @@ class Insert(_Query):
                                                                                         pair.field.insert_view for pair
                                                                                         in self._pairs),
                                                                                     placeholders=", ".join(
-                                                                                        [placeholder] * len(self._pairs)))]
+                                                                                        [placeholder] * len(
+                                                                                            self._pairs)))]
         args = [pair.value for pair in self._pairs]
         if self._on_duplicate_update_fields:
             ts = []
@@ -789,7 +800,8 @@ class InsertFromSelect(_Query):
         else:
             raise ValueError("Unknown")
         sql_pieces = ["INSERT INTO {table}({fields}) {sub_query}".format(table=self._tables.raw_view,
-                                                                         fields=", ".join(field.insert_view for field in self._fields),
+                                                                         fields=", ".join(field.insert_view for field in
+                                                                                          self._fields),
                                                                          sub_query=sub_query_sql)]
         if self._on_duplicate_update_fields:
             # sql_pieces.append("ON DUPLICATE KEY UPDATE {}".format(
@@ -864,15 +876,19 @@ class Select(_Query):
     def __init__(self, tables, fields=None, where=None, sort=None, group=None, offset=0, count=0):
         super(Select, self).__init__(tables)
         assert fields is None or (isinstance(fields, (list, tuple)))
+        self._fields = []
         if fields:
             for field in fields:
-                assert isinstance(field, _Column)
+                if isinstance(field, basestring):
+                    self._fields.append(RawSQLField(field))
+                else:
+                    assert isinstance(field, _Column)
+                    self._fields.append(field)
         assert where is None or isinstance(where, _Where)
         assert sort is None or isinstance(sort, Sort)
         assert group is None or isinstance(group, GroupBy)
         assert offset >= 0
         assert count >= 0
-        self._fields = fields
         self._where = where
         self._sort = sort
         self._group = group
@@ -889,9 +905,14 @@ class Select(_Query):
         return self
 
     def select(self, *fields):
+        _fields = []
         for field in fields:
-            assert isinstance(field, _Column)
-        self._fields = fields
+            if isinstance(field, basestring):
+                _fields.append(RawSQLField(field))
+            else:
+                assert isinstance(field, _Column)
+                _fields.append(field)
+        self._fields = _fields
         return self
 
     def where(self, cond):
@@ -992,7 +1013,9 @@ if __name__ == "__main__":
     print(student.select(student.id.count("student_count")).sql())
     print(student.select("id", "age").sql())
 
-    print(Select(tables=student.join(class_, (student.class_id == class_.id) & (student.age == 20))).asc(class_.name).sql("?"))
+    print(
+    Select(tables=student.join(class_, (student.class_id == class_.id) & (student.age == 20))).asc(class_.name).sql(
+        "?"))
     print(Select(tables=teacher.join(teach,
                                      teach.teacher_id == teacher.id).join(class_, class_.id == teach.class_id),
                  where=(class_.id == '123123'), fields=[teacher.builtin_all]).sql())
@@ -1002,7 +1025,8 @@ if __name__ == "__main__":
     print("=" * 20)
     print(Insert(student, student.id, 1, student.name, "学生a", student.class_id, "21321").on_duplicate_key_fields(
         student.name, "学生a").sql())
-    print(student.insert(id=1, name="学生a", class_id="21321").on_duplicate_key_fields(name="学生a").add_fields(age=20).sql())
+    print(
+    student.insert(id=1, name="学生a", class_id="21321").on_duplicate_key_fields(name="学生a").add_fields(age=20).sql())
 
     sub = Select(student).where(student.name == 'test').select(
         student.id, student.name, student.class_id, student.age).as_table("old_student")
@@ -1012,7 +1036,8 @@ if __name__ == "__main__":
     print(student.update(name="学生").add_fields(age=20).where(student.id == 1).sql())
     print(Delete(table=student).where(student.id == 1).sql())
     print(Delete(table=teacher).where(teacher.id.in_(
-        Select(tables=teach.join(teacher, teach.teacher_id == teacher.id)).select(teacher.id).where((teach.class_id == 2) & (teacher.deleted == 0)))).sql())
+        Select(tables=teach.join(teacher, teach.teacher_id == teacher.id)).select(teacher.id).where(
+            (teach.class_id == 2) & (teacher.deleted == 0)))).sql())
 
     sub_query = student.select(student.age.max_("oldest")).where(student.age <= 20).as_table("sub")
     print(student.inner_join(sub_query, sub_query.oldest == student.age).select().sql())
@@ -1022,7 +1047,9 @@ if __name__ == "__main__":
     cond &= student.age >= 20
     query = student.select().where(cond)
     print(query.sql())
-
     print(class_.update().update(class_.access_num.inc()).sql())
+
+    stat = ss.select(ss.age, RawSQLField("group_concat(name ORDER BY name) AS names"))
+    print(stat.sql())
 
 

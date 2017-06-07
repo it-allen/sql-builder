@@ -3,10 +3,11 @@
 # 2017/4/15 下午10:13
 
 from setuptools import setup
+from sql_builder import __version__
 
 setup(
     name='sql-builder',
-    version='0.0.21',
+    version=__version__,
     description='A builder for SQL statement',
     url='https://github.com/it-allen/sql-builder',
     author='Allen Zou',
