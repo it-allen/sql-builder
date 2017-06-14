@@ -786,10 +786,14 @@ class InsertFromSelect(_Query):
             self._on_duplicate_update_fields.append(ColumnUpdating(key, val))
         return self
 
-    def on_duplicate_key_update(self, *updating):
+    def on_duplicate_key_update(self, *updating, **kwargs):
         for each in updating:
             assert isinstance(each, ColumnUpdating)
             self._on_duplicate_update_fields.append(each)
+        for col, val in kwargs.items():
+            assert isinstance(val, Column)
+            up = ColumnUpdating(Column(self._tables, col), val)
+            self._on_duplicate_update_fields.append(up)
         return self
 
     def sql(self, placeholder="%s"):
@@ -1030,7 +1034,7 @@ if __name__ == "__main__":
 
     sub = Select(student).where(student.name == 'test').select(
         student.id, student.name, student.class_id, student.age).as_table("old_student")
-    print(ss.insert_from_select([ss.id, ss.name, ss.class_id, ss.age], sub).sql())
+    print(ss.insert_from_select([ss.id, ss.name, ss.class_id, ss.age], sub).on_duplicate_key_update(name=sub.name, age=sub.age).sql())
 
     print(student.update(student.name, "学生").where(student.id == 1).sql())
     print(student.update(name="学生").add_fields(age=20).where(student.id == 1).sql())
