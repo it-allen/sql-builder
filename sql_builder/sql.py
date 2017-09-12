@@ -4,8 +4,11 @@
 import collections
 import sys
 import weakref
+import six
 
+python_version = 2
 if sys.version_info >= (3, 0):
+    python_version = 3
     basestring = str
 
 
@@ -566,11 +569,23 @@ class Condition(_Where):
                 value = "({})".format(",".join(placeholder for _ in self.value))
                 args.extend(self.value)
         elif self.op in [Condition.OP_LIKE, Condition.OP_NOT_LIKE]:
-            value = "'%%{}%%'".format(self.value)
+            value = placeholder
+            arg = self.value
+            if isinstance(arg, six.text_type):
+                arg = self.value.encode('utf-8')
+            args.append("%{}%".format(arg))
         elif self.op in [Condition.OP_PREFIX, Condition.OP_NOT_PREFIX]:
-            value = "'{}%%'".format(self.value)
+            value = placeholder
+            arg = self.value
+            if isinstance(arg, six.text_type):
+                arg = self.value.encode('utf-8')
+            args.append("{}%".format(arg))
         elif self.op in [Condition.OP_SUFFIX, Condition.OP_NOT_SUFFIX]:
-            value = "'%%{}'".format(self.value)
+            value = placeholder
+            arg = self.value
+            if isinstance(arg, six.text_type):
+                arg = self.value.encode('utf-8')
+            args.append("%{}".format(arg))
         elif self.op in [Condition.OP_EQ, Condition.OP_NE]:
             if self.value is None:
                 op = "IS" if self.op == Condition.OP_EQ else "IS NOT"
@@ -1015,7 +1030,7 @@ if __name__ == "__main__":
     print(student.select(student.builtin_all, student.age.max_("max_age")).sql())
     print(student.select(student.builtin_all, student.age.min_("min_age")).sql())
     print(student.select(student.id.count("student_count")).sql())
-    print(student.select("id", "age").sql())
+    print(student.select("id", "age").where(student.name.like("测试")).sql())
 
     print(
     Select(tables=student.join(class_, (student.class_id == class_.id) & (student.age == 20))).asc(class_.name).sql(
