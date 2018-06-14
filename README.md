@@ -1,6 +1,14 @@
 # sql-builder
 A tool to build sql statement, avoiding to write SQLs directly. 
 
+## Package && Publish
+```sh
+# build first, need package wheel installed
+python setup.py bdist_wheel
+
+# upload
+python setup.py sdist bdist_wheel upload
+```
 
 ## Install
 ```sh

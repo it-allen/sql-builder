@@ -2,7 +2,7 @@
 # Author: Allen Zou
 # 2017/4/15 下午10:13
 
-from setuptools import setup
+from setuptools import setup, find_packages
 from sql_builder import __version__
 
 setup(
@@ -27,5 +27,9 @@ setup(
         'Programming Language :: Python :: 3.6',
     ],
     keywords='sql',
-    packages=['sql_builder']
+    # packages=['sql_builder']
+    packages=find_packages(exclude=["tests"]),
+    install_requires=[
+        "six>=1.11.0"
+    ]
 )

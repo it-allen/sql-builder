@@ -4,6 +4,7 @@
 import collections
 import sys
 import weakref
+
 import six
 
 python_version = 2
@@ -1033,8 +1034,8 @@ if __name__ == "__main__":
     print(student.select("id", "age").where(student.name.like("测试")).sql())
 
     print(
-    Select(tables=student.join(class_, (student.class_id == class_.id) & (student.age == 20))).asc(class_.name).sql(
-        "?"))
+        Select(tables=student.join(class_, (student.class_id == class_.id) & (student.age == 20))).asc(class_.name).sql(
+            "?"))
     print(Select(tables=teacher.join(teach,
                                      teach.teacher_id == teacher.id).join(class_, class_.id == teach.class_id),
                  where=(class_.id == '123123'), fields=[teacher.builtin_all]).sql())
@@ -1045,11 +1046,12 @@ if __name__ == "__main__":
     print(Insert(student, student.id, 1, student.name, "学生a", student.class_id, "21321").on_duplicate_key_fields(
         student.name, "学生a").sql())
     print(
-    student.insert(id=1, name="学生a", class_id="21321").on_duplicate_key_fields(name="学生a").add_fields(age=20).sql())
+        student.insert(id=1, name="学生a", class_id="21321").on_duplicate_key_fields(name="学生a").add_fields(age=20).sql())
 
     sub = Select(student).where(student.name == 'test').select(
         student.id, student.name, student.class_id, student.age).as_table("old_student")
-    print(ss.insert_from_select([ss.id, ss.name, ss.class_id, ss.age], sub).on_duplicate_key_update(name=sub.name, age=sub.age).sql())
+    print(ss.insert_from_select([ss.id, ss.name, ss.class_id, ss.age], sub).on_duplicate_key_update(name=sub.name,
+                                                                                                    age=sub.age).sql())
 
     print(student.update(student.name, "学生").where(student.id == 1).sql())
     print(student.update(name="学生").add_fields(age=20).where(student.id == 1).sql())
@@ -1070,5 +1072,3 @@ if __name__ == "__main__":
 
     stat = ss.select(ss.age, RawSQLField("group_concat(name ORDER BY name) AS names"))
     print(stat.sql())
-
-

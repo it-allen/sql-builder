@@ -1,7 +1,7 @@
 # coding: utf-8
 # Author: Allen Zou
 # 2017/4/15 下午10:07
-__version__ = (0, 0, 24)
+__version__ = (0, 0, 25)
 
 from .sql import *
 
